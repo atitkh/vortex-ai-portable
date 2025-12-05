@@ -45,11 +45,13 @@ class OpenWakeWordDetector(WakeWordDetector):
         sd = _lazy_import_sounddevice()
         frame_length = int(self.sample_rate * (self.frame_ms / 1000.0))
         q: queue.Queue[np.ndarray] = queue.Queue()
+        detected_flag = [False]  # Use list to allow modification in callback
 
         def callback(indata, frames, time_, status):  # type: ignore[override]
             if status:
                 print(f"[wake] audio status: {status}")
-            q.put(indata.copy())
+            if not detected_flag[0]:  # Only queue if not already detected
+                q.put(indata.copy())
 
         print("[wake] Listening for wake word... (Ctrl+C to exit)")
         print(f"[wake] Loaded models: {list(self.model.models.keys())}")
@@ -69,14 +71,16 @@ class OpenWakeWordDetector(WakeWordDetector):
                 callback=callback,
             ):
                 frame_count = 0
-                while True:
-                    data = q.get()
+                while not detected_flag[0]:
+                    try:
+                        data = q.get(timeout=0.1)  # Add timeout to check detected_flag
+                    except queue.Empty:
+                        continue
+                    
                     audio = data[:, 0] if data.ndim > 1 else data
                     
                     # Check if there's actual audio energy (not silence)
                     audio_energy = float(np.abs(audio).mean())
-                    if audio_energy < 0.001:  # Very quiet, likely silence
-                        continue
                     
                     # Convert to int16 as expected by openWakeWord
                     audio_int16 = (audio * 32767).astype(np.int16)
@@ -85,31 +89,29 @@ class OpenWakeWordDetector(WakeWordDetector):
                     
                     frame_count += 1
                     
-                    # Check detection on every frame with audio
-                    detected = _is_detected(scores, self.threshold, audio_energy)
-                    if detected:
+                    # Check detection on every frame (model handles its own energy detection)
+                    if _is_detected(scores, self.threshold):
                         print(f"[wake] Wake word detected! Energy: {audio_energy:.4f}, Scores: {scores}")
+                        detected_flag[0] = True
                         # Reset model state to prevent false triggers from accumulated scores
                         self.model.reset()
-                        return True
+                        break
                     
                     # Print scores regularly when there's audio
                     if frame_count % 25 == 0 and audio_energy > 0.005:
                         sorted_scores = sorted(scores.items(), key=lambda x: float(x[1].item() if hasattr(x[1], 'item') else x[1]), reverse=True)[:3]
                         score_str = ', '.join([f"{k}: {float(v.item() if hasattr(v, 'item') else v):.3f}" for k, v in sorted_scores])
                         print(f"[wake] Energy: {audio_energy:.3f} | Top: {score_str}")
+                
+                return detected_flag[0]
         except KeyboardInterrupt:
             print("\n[wake] Interrupted by user.")
             return False
 
 
-def _is_detected(scores, threshold: float, audio_energy: float = 0.0) -> bool:
+def _is_detected(scores, threshold: float) -> bool:
     """Check if any wake word score exceeds threshold."""
     if not isinstance(scores, dict):
-        return False
-    
-    # Require minimum audio energy to avoid false positives on silence
-    if audio_energy < 0.01:
         return False
     
     for model_name, value in scores.items():
@@ -122,7 +124,7 @@ def _is_detected(scores, threshold: float, audio_energy: float = 0.0) -> bool:
             continue
         
         if score >= threshold:
-            print(f"[wake] ✓ DETECTED '{model_name}' with score {score:.4f} (energy: {audio_energy:.4f})")
+            print(f"[wake] ✓ DETECTED '{model_name}' with score {score:.4f}")
             return True
     
     return False
