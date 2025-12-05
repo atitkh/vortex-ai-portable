@@ -1,0 +1,15 @@
+# Core dependencies for VortexAI portable assistant
+python-dotenv
+
+# Audio dependencies (only needed for wake word detection and playback)
+# Install these for audio mode:
+sounddevice
+numpy
+openwakeword
+onnxruntime  # Required backend for openwakeword
+
+# Wyoming protocol (for rhasspy/wyoming-whisper and wyoming-piper services)
+wyoming
+
+# Optional: only needed if using local Whisper/Piper (VORTEX_STT_MODE=local / VORTEX_TTS_MODE=local)
+# openai-whisper
