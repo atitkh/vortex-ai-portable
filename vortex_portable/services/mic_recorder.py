@@ -107,6 +107,15 @@ class SoundDeviceRecorder(AudioRecorder):
         recording = np.concatenate(recorded_chunks, axis=0)
         duration = len(recording) / self.sample_rate
         print(f"[rec] Recorded {duration:.2f}s of audio")
+        
+        # Play end of listening sound
+        print("[rec] Playing end sound...")
+        try:
+            from .audio_feedback import play_double_beep
+            play_double_beep()
+            print("[rec] End sound played")
+        except Exception as e:
+            print(f"[rec] Failed to play end sound: {e}")
 
         # Convert float32 [-1.0, 1.0] to 16-bit PCM bytes
         pcm = np.clip(recording, -1.0, 1.0)

@@ -102,8 +102,18 @@ class OpenWakeWordDetector(WakeWordDetector):
                         sorted_scores = sorted(scores.items(), key=lambda x: float(x[1].item() if hasattr(x[1], 'item') else x[1]), reverse=True)[:3]
                         score_str = ', '.join([f"{k}: {float(v.item() if hasattr(v, 'item') else v):.3f}" for k, v in sorted_scores])
                         print(f"[wake] Energy: {audio_energy:.3f} | Top: {score_str}")
-                
-                return detected_flag[0]
+            
+            # Play wake sound feedback after stream is closed
+            if detected_flag[0]:
+                print("[wake] Playing wake sound...")
+                try:
+                    from .audio_feedback import play_wake_sound
+                    play_wake_sound()
+                    print("[wake] Wake sound played")
+                except Exception as e:
+                    print(f"[wake] Failed to play wake sound: {e}")
+            
+            return detected_flag[0]
         except KeyboardInterrupt:
             print("\n[wake] Interrupted by user.")
             return False
