@@ -25,7 +25,7 @@ class OpenWakeWordDetector(WakeWordDetector):
         self,
         *,
         model_path: Optional[str] = None,
-        threshold: float = 0.4,
+        threshold: float = 0.3,
         sample_rate: int = 16000,
         frame_ms: int = 80,
     ) -> None:
