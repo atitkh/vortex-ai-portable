@@ -71,6 +71,7 @@ class AppConfig:
     whisper_model: str
     whisper_device: Optional[str]
     record_seconds: float
+    silence_duration: float
     piper_model_path: Optional[str]
     piper_binary: str
     piper_speaker: Optional[str]
@@ -102,6 +103,7 @@ class AppConfig:
             - VORTEX_WHISPER_MODEL: Whisper model size (default: "tiny").
             - VORTEX_WHISPER_DEVICE: Whisper device (e.g., "cuda" or "cpu").
             - VORTEX_RECORD_SECONDS: Seconds per utterance recording in audio mode (default: 5).
+            - VORTEX_SILENCE_DURATION: Seconds of silence before stopping recording (default: 1.5).
             - VORTEX_PIPER_MODEL: Path to Piper .onnx model (required for audio mode).
             - VORTEX_PIPER_BINARY: Piper binary name/path (default: "piper").
             - VORTEX_PIPER_SPEAKER: Optional speaker id/name passed to Piper.
@@ -149,6 +151,13 @@ class AppConfig:
             record_seconds = float(record_seconds_raw)
         except ValueError as exc:  # pragma: no cover - defensive guard
             raise ValueError("VORTEX_RECORD_SECONDS must be a number") from exc
+        
+        silence_duration_raw = os.environ.get("VORTEX_SILENCE_DURATION", "1.5")
+        try:
+            silence_duration = float(silence_duration_raw)
+        except ValueError as exc:  # pragma: no cover - defensive guard
+            raise ValueError("VORTEX_SILENCE_DURATION must be a number") from exc
+        
         piper_model_path = os.environ.get("VORTEX_PIPER_MODEL") or None
         piper_binary = os.environ.get("VORTEX_PIPER_BINARY", "piper")
         piper_speaker = os.environ.get("VORTEX_PIPER_SPEAKER") or None
@@ -175,6 +184,7 @@ class AppConfig:
             whisper_model=whisper_model,
             whisper_device=whisper_device,
             record_seconds=record_seconds,
+            silence_duration=silence_duration,
             piper_model_path=piper_model_path,
             piper_binary=piper_binary,
             piper_speaker=piper_speaker,

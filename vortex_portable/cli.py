@@ -41,7 +41,7 @@ def build_assistant(config: AppConfig) -> PortableAssistant:
         recorder = SoundDeviceRecorder(
             sample_rate=16000,
             max_seconds=config.record_seconds,
-            silence_duration=1.5,
+            silence_duration=config.silence_duration,
             silence_threshold=0.01,
         )
         

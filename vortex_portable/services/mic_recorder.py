@@ -44,7 +44,10 @@ class SoundDeviceRecorder(AudioRecorder):
         sd = _lazy_import_sounddevice()
         import numpy as np
 
-        print(f"[rec] Listening... speak now (stops after {self.silence_duration}s of silence)")
+        if self.max_seconds > 0:
+            print(f"[rec] Listening... speak now (max {self.max_seconds}s, stops after {self.silence_duration}s of silence)")
+        else:
+            print(f"[rec] Listening... speak now (stops after {self.silence_duration}s of silence)")
         
         recorded_chunks = []
         silence_start = None
@@ -80,8 +83,8 @@ class SoundDeviceRecorder(AudioRecorder):
                 while True:
                     sd.sleep(100)  # Check every 100ms
                     
-                    # Stop if max duration reached
-                    if time.time() - start_time > self.max_seconds:
+                    # Stop if max duration reached (if max_seconds > 0)
+                    if self.max_seconds > 0 and time.time() - start_time > self.max_seconds:
                         print(f"[rec] Max duration reached ({self.max_seconds}s)")
                         break
                     

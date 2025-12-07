@@ -25,7 +25,7 @@ class OpenWakeWordDetector(WakeWordDetector):
         self,
         *,
         model_path: Optional[str] = None,
-        threshold: float = 0.8,
+        threshold: float = 0.4,
         sample_rate: int = 16000,
         frame_ms: int = 80,
     ) -> None:
@@ -97,8 +97,8 @@ class OpenWakeWordDetector(WakeWordDetector):
                         self.model.reset()
                         break
                     
-                    # Print scores regularly when there's audio
-                    if frame_count % 25 == 0 and audio_energy > 0.005:
+                    # Print scores regularly (removed energy check - show all frames)
+                    if frame_count % 10 == 0:  # Show every 10th frame for readability
                         sorted_scores = sorted(scores.items(), key=lambda x: float(x[1].item() if hasattr(x[1], 'item') else x[1]), reverse=True)[:3]
                         score_str = ', '.join([f"{k}: {float(v.item() if hasattr(v, 'item') else v):.3f}" for k, v in sorted_scores])
                         print(f"[wake] Energy: {audio_energy:.3f} | Top: {score_str}")
