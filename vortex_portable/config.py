@@ -29,6 +29,10 @@ class AppConfig:
         conversation_id: Conversation identifier reused per session for backend context.
         debug: Whether to set debug=true on chat requests.
         mode: "console" or "audio" for selecting implementations.
+        chat_mode: "http" (default) or "openclaw" for chat client implementation.
+        openclaw_gateway_url: OpenClaw Gateway URL (when chat_mode=openclaw).
+        openclaw_token: Authentication token for OpenClaw Gateway.
+        openclaw_agent_id: Agent ID in OpenClaw config (default: "main").
         stt_mode: "local", "remote", or "wyoming" for STT implementation.
         tts_mode: "local", "remote", or "wyoming" for TTS implementation.
         whisper_url: URL for remote Whisper service (when stt_mode=remote).
@@ -60,6 +64,10 @@ class AppConfig:
     conversation_id: str
     debug: bool
     mode: str
+    chat_mode: str
+    openclaw_gateway_url: Optional[str]
+    openclaw_token: Optional[str]
+    openclaw_agent_id: str
     stt_mode: str
     tts_mode: str
     whisper_url: Optional[str]
@@ -92,6 +100,10 @@ class AppConfig:
             - VORTEX_CONVERSATION_ID: Explicit conversation id; defaults to a random UUID.
             - VORTEX_DEBUG: "true"/"1" to enable debug flag on chat requests (default: false).
             - VORTEX_MODE: "console" (default) or "audio" to enable mic + TTS.
+            - VORTEX_CHAT_MODE: "http" (default) or "openclaw" for chat client implementation.
+            - VORTEX_OPENCLAW_GATEWAY_URL: OpenClaw Gateway URL (e.g., http://localhost:18789).
+            - VORTEX_OPENCLAW_TOKEN: Authentication token for OpenClaw Gateway.
+            - VORTEX_OPENCLAW_AGENT_ID: Agent ID in OpenClaw config (default: "main").
             - VORTEX_STT_MODE: "local" (default), "remote", or "wyoming" for STT.
             - VORTEX_TTS_MODE: "local" (default), "remote", or "wyoming" for TTS.
             - VORTEX_WHISPER_URL: URL for remote Whisper (HTTP) service.
@@ -128,6 +140,10 @@ class AppConfig:
         debug_raw = os.environ.get("VORTEX_DEBUG", "false").lower()
         debug = debug_raw in {"1", "true", "yes", "on"}
         mode = os.environ.get("VORTEX_MODE", "console").lower()
+        chat_mode = os.environ.get("VORTEX_CHAT_MODE", "http").lower()
+        openclaw_gateway_url = os.environ.get("VORTEX_OPENCLAW_GATEWAY_URL") or None
+        openclaw_token = os.environ.get("VORTEX_OPENCLAW_TOKEN") or None
+        openclaw_agent_id = os.environ.get("VORTEX_OPENCLAW_AGENT_ID", "main")
         stt_mode = os.environ.get("VORTEX_STT_MODE", "local").lower()
         tts_mode = os.environ.get("VORTEX_TTS_MODE", "local").lower()
         whisper_url = os.environ.get("VORTEX_WHISPER_URL") or None
@@ -173,6 +189,10 @@ class AppConfig:
             conversation_id=conversation_id,
             debug=debug,
             mode=mode,
+            chat_mode=chat_mode,
+            openclaw_gateway_url=openclaw_gateway_url,
+            openclaw_token=openclaw_token,
+            openclaw_agent_id=openclaw_agent_id,
             stt_mode=stt_mode,
             tts_mode=tts_mode,
             whisper_url=whisper_url,

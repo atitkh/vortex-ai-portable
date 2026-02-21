@@ -9,6 +9,7 @@ from typing import Optional
 from .config import AppConfig
 from .pipeline import PortableAssistant
 from .services.chat_client import HttpChatClient
+from .services.chat_openclaw_http import OpenClawHttpClient
 from .services.mic_recorder import SoundDeviceRecorder
 from .services.recorder import ConsoleRecorder
 from .services.stt import EchoSpeechToText
@@ -33,7 +34,26 @@ def _configure_logging(verbose: bool) -> None:
 
 def build_assistant(config: AppConfig) -> PortableAssistant:
     """Wire up the assistant with default console or audio implementations."""
-    chat_client = HttpChatClient(config.base_url, api_key=config.api_key, timeout=config.request_timeout)
+    # Choose chat client implementation based on config
+    if config.chat_mode == "openclaw":
+        if not config.openclaw_gateway_url:
+            raise RuntimeError(
+                "VORTEX_OPENCLAW_GATEWAY_URL must be set when VORTEX_CHAT_MODE=openclaw. "
+                "Example: http://localhost:18789"
+            )
+        if not config.openclaw_token:
+            raise RuntimeError(
+                "VORTEX_OPENCLAW_TOKEN must be set when VORTEX_CHAT_MODE=openclaw."
+            )
+        chat_client = OpenClawHttpClient(
+            gateway_url=config.openclaw_gateway_url,
+            token=config.openclaw_token,
+            agent_id=config.openclaw_agent_id,
+            timeout=config.request_timeout,
+        )
+    else:
+        # Default HTTP client
+        chat_client = HttpChatClient(config.base_url, api_key=config.api_key, timeout=config.request_timeout)
 
     if config.mode == "audio":
         wake = OpenWakeWordDetector(model_path=config.wake_model_path)
