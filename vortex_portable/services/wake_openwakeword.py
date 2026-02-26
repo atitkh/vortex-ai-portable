@@ -53,11 +53,7 @@ class OpenWakeWordDetector(WakeWordDetector):
             if not detected_flag[0]:  # Only queue if not already detected
                 q.put(indata.copy())
 
-        print("[wake] Listening for wake word... (Ctrl+C to exit)")
-        print(f"[wake] Loaded models: {list(self.model.models.keys())}")
-        print(f"[wake] Detection threshold: {self.threshold}")
-        print(f"[wake] Say any of these wake words: {', '.join(self.model.models.keys())}")
-        print(f"[wake] Note: Most models respond to variations like 'hey jarvis', 'alexa', etc.")
+        print("[wake] Listening for wake word...")
         
         # Reset model state to start fresh
         self.model.reset()
@@ -68,50 +64,24 @@ class OpenWakeWordDetector(WakeWordDetector):
                 channels=1,
                 dtype="float32",
                 blocksize=frame_length,
+                device=sd.default.device[0],
                 callback=callback,
             ):
-                frame_count = 0
                 while not detected_flag[0]:
                     try:
-                        data = q.get(timeout=0.1)  # Add timeout to check detected_flag
+                        data = q.get(timeout=0.1)
                     except queue.Empty:
                         continue
                     
                     audio = data[:, 0] if data.ndim > 1 else data
-                    
-                    # Check if there's actual audio energy (not silence)
-                    audio_energy = float(np.abs(audio).mean())
-                    
-                    # Convert to int16 as expected by openWakeWord
                     audio_int16 = (audio * 32767).astype(np.int16)
-                    
                     scores = self.model.predict(audio_int16)
                     
-                    frame_count += 1
-                    
-                    # Check detection on every frame (model handles its own energy detection)
                     if _is_detected(scores, self.threshold):
-                        print(f"[wake] Wake word detected! Energy: {audio_energy:.4f}, Scores: {scores}")
+                        print(f"[wake] Wake word detected!")
                         detected_flag[0] = True
-                        # Reset model state to prevent false triggers from accumulated scores
                         self.model.reset()
                         break
-                    
-                    # Print scores regularly (removed energy check - show all frames)
-                    if frame_count % 10 == 0:  # Show every 10th frame for readability
-                        sorted_scores = sorted(scores.items(), key=lambda x: float(x[1].item() if hasattr(x[1], 'item') else x[1]), reverse=True)[:3]
-                        score_str = ', '.join([f"{k}: {float(v.item() if hasattr(v, 'item') else v):.3f}" for k, v in sorted_scores])
-                        print(f"[wake] Energy: {audio_energy:.3f} | Top: {score_str}")
-            
-            # Play wake sound feedback after stream is closed
-            if detected_flag[0]:
-                print("[wake] Playing wake sound...")
-                try:
-                    from .audio_feedback import play_wake_sound
-                    play_wake_sound()
-                    print("[wake] Wake sound played")
-                except Exception as e:
-                    print(f"[wake] Failed to play wake sound: {e}")
             
             return detected_flag[0]
         except KeyboardInterrupt:
@@ -162,7 +132,7 @@ def _load_openwakeword(model_path: Optional[str]):
     print("[wake] Loading wake word models...")
     try:
         if model_path:
-            return Model(wakeword_model_paths=[model_path], inference_framework='onnx')
+            return Model(wakeword_models=[model_path], inference_framework='onnx')
         else:
             # Use multiple common wake words for better detection
             # Available models: alexa, hey_mycroft, hey_jarvis, timer, weather, etc.

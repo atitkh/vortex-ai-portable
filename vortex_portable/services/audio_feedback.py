@@ -21,7 +21,6 @@ def play_beep(frequency: int = 800, duration: float = 0.15, sample_rate: int = 2
         print("[audio] sounddevice not available")
         return
     
-    print(f"[audio] Generating beep: {frequency}Hz, {duration}s, vol={volume}")
     t = np.linspace(0, duration, int(sample_rate * duration), False)
     
     # Use sine wave for smooth sound
@@ -38,9 +37,7 @@ def play_beep(frequency: int = 800, duration: float = 0.15, sample_rate: int = 2
     # Apply volume
     tone = tone * volume
     
-    print(f"[audio] Tone range: min={tone.min():.3f}, max={tone.max():.3f}, mean={np.abs(tone).mean():.3f}")
-    sd.play(tone.astype(np.float32), samplerate=sample_rate, blocking=True)
-    print(f"[audio] Tone playback complete")
+    sd.play(tone.astype(np.float32), samplerate=sample_rate, blocking=True, device=sd.default.device[1])
 
 
 def play_wake_sound() -> None:
@@ -54,7 +51,6 @@ def play_wake_sound() -> None:
     sample_rate = 22050
     duration = 0.4
     
-    print("[audio] Generating wake sound...")
     # Generate smooth rising sweep from 400Hz to 800Hz
     t = np.linspace(0, duration, int(sample_rate * duration), False)
     
@@ -80,9 +76,7 @@ def play_wake_sound() -> None:
         envelope = np.concatenate([envelope, [0]])
     tone = tone * envelope[:len(tone)]
     
-    print(f"[audio] Tone range: min={tone.min():.3f}, max={tone.max():.3f}")
-    sd.play(tone.astype(np.float32), samplerate=sample_rate, blocking=True)
-    print(f"[audio] Wake tone complete")
+    sd.play(tone.astype(np.float32), samplerate=sample_rate, blocking=True, device=sd.default.device[1])
 
 
 def play_listening_end_sound() -> None:
@@ -97,7 +91,6 @@ def play_listening_end_sound() -> None:
     duration = 0.2
     t = np.linspace(0, duration, int(sample_rate * duration), False)
     
-    print("[audio] Generating end sound...")
     # Falling frequency from 1000Hz to 600Hz
     freq_start = 1000
     freq_end = 600
@@ -114,9 +107,7 @@ def play_listening_end_sound() -> None:
     envelope = np.linspace(1.0, 0.5, len(t))
     tone = tone * envelope
     
-    print(f"[audio] Playing end tone with {len(tone)} samples...")
-    sd.play(tone.astype(np.float32), samplerate=sample_rate, blocking=True)
-    print(f"[audio] End tone complete")
+    sd.play(tone.astype(np.float32), samplerate=sample_rate, blocking=True, device=sd.default.device[1])
 
 
 def play_double_beep() -> None:
@@ -130,7 +121,6 @@ def play_double_beep() -> None:
     sample_rate = 22050
     duration = 0.35
     
-    print("[audio] Playing end sound...")
     # Generate smooth falling sweep from 800Hz to 500Hz
     t = np.linspace(0, duration, int(sample_rate * duration), False)
     
@@ -156,6 +146,95 @@ def play_double_beep() -> None:
         envelope = np.concatenate([envelope, [0]])
     tone = tone * envelope[:len(tone)]
     
-    print(f"[audio] Tone range: min={tone.min():.3f}, max={tone.max():.3f}")
-    sd.play(tone.astype(np.float32), samplerate=sample_rate, blocking=True)
-    print("[audio] End sound complete")
+    sd.play(tone.astype(np.float32), samplerate=sample_rate, blocking=True, device=sd.default.device[1])
+
+
+def play_thinking_sound() -> None:
+    """Play a subtle pulsing tone to indicate AI is thinking/processing."""
+    try:
+        import sounddevice as sd  # type: ignore
+    except ImportError:
+        return
+    
+    sample_rate = 22050
+    duration = 0.3
+    t = np.linspace(0, duration, int(sample_rate * duration), False)
+    
+    # Gentle pulsing tone at 600Hz
+    tone = np.sin(600 * 2 * np.pi * t)
+    
+    # Pulsing amplitude (2 pulses)
+    pulse = 0.5 + 0.3 * np.sin(8 * np.pi * t)
+    
+    # Apply envelope
+    envelope = np.concatenate([
+        np.linspace(0, 1, len(t)//4),
+        np.ones(len(t)//2),
+        np.linspace(1, 0, len(t)//4)
+    ])[:len(t)]
+    
+    tone = tone * pulse * envelope * 0.4
+    sd.play(tone.astype(np.float32), samplerate=sample_rate, blocking=True, device=sd.default.device[1])
+
+
+def play_speaking_start_sound() -> None:
+    """Play a quick ascending chime to indicate assistant is about to speak."""
+    try:
+        import sounddevice as sd  # type: ignore
+    except ImportError:
+        return
+    
+    sample_rate = 22050
+    duration = 0.15
+    t = np.linspace(0, duration, int(sample_rate * duration), False)
+    
+    # Quick rising tone from 700Hz to 900Hz
+    freq_start = 700
+    freq_end = 900
+    phase = 0
+    tone = []
+    for i in range(len(t)):
+        freq = freq_start + (freq_end - freq_start) * (i / len(t))
+        phase += 2 * np.pi * freq / sample_rate
+        tone.append(np.sin(phase))
+    
+    tone = np.array(tone)
+    
+    # Quick fade in/out
+    envelope = np.concatenate([
+        np.linspace(0, 0.5, len(t)//3),
+        np.ones(len(t)//3) * 0.5,
+        np.linspace(0.5, 0, len(t)//3)
+    ])[:len(t)]
+    
+    tone = tone * envelope
+    sd.play(tone.astype(np.float32), samplerate=sample_rate, blocking=True, device=sd.default.device[1])
+
+
+def play_error_sound() -> None:
+    """Play a descending error tone."""
+    try:
+        import sounddevice as sd  # type: ignore
+    except ImportError:
+        return
+    
+    sample_rate = 22050
+    duration = 0.4
+    t = np.linspace(0, duration, int(sample_rate * duration), False)
+    
+    # Descending tone from 600Hz to 300Hz
+    freq_start = 600
+    freq_end = 300
+    phase = 0
+    tone = []
+    for i in range(len(t)):
+        freq = freq_start + (freq_end - freq_start) * (i / len(t))
+        phase += 2 * np.pi * freq / sample_rate
+        tone.append(np.sin(phase))
+    
+    tone = np.array(tone)
+    
+    # Apply envelope
+    envelope = np.linspace(0.7, 0, len(t))
+    tone = tone * envelope
+    sd.play(tone.astype(np.float32), samplerate=sample_rate, blocking=True, device=sd.default.device[1])

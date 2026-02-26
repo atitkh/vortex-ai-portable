@@ -1,4 +1,4 @@
-"""Microphone recorder backed by sounddevice with Voice Activity Detection."""
+"""Microphone recorder backed by sounddevice with Silero VAD."""
 
 from __future__ import annotations
 
@@ -8,17 +8,52 @@ from typing import Optional
 from ..interfaces import AudioRecorder
 from ..models import CapturedAudio
 
+# Silero VAD chunk size: 512 samples at 16kHz, 256 at 8kHz
+_SILERO_CHUNK_SIZE = 512
+
+
+def _load_silero_vad():
+    """Load Silero VAD model. Returns model or None if unavailable."""
+    try:
+        from silero_vad import load_silero_vad  # pip install silero-vad
+        model = load_silero_vad()
+        return model
+    except ImportError:
+        pass
+    except Exception as e:
+        print(f"[vad] Silero VAD (pip) failed: {e}")
+    
+    # Fallback: try torch.hub (requires torchaudio)
+    try:
+        import torch
+        model, _ = torch.hub.load(
+            repo_or_dir="snakers4/silero-vad",
+            model="silero_vad",
+            force_reload=False,
+            trust_repo=True,
+            verbose=False,
+        )
+        model.eval()
+        return model
+    except Exception as e:
+        print(f"[vad] Silero VAD unavailable, falling back to amplitude threshold: {e}")
+        return None
+
 
 class SoundDeviceRecorder(AudioRecorder):
     """
-    Records audio from the default microphone using sounddevice with VAD.
+    Records audio from the default microphone using sounddevice.
+
+    Uses Silero VAD (ML-based) for accurate speech/silence detection.
+    Falls back to amplitude threshold if torch/silero is not available.
 
     Args:
-        sample_rate: Target sample rate (Hz).
+        sample_rate: Target sample rate (Hz). Must be 16000 for Silero VAD.
         channels: Number of channels to record.
         max_seconds: Maximum recording duration (safety limit).
-        silence_duration: Seconds of silence before stopping (VAD).
-        silence_threshold: Audio level below which is considered silence.
+        silence_duration: Seconds of silence before stopping.
+        vad_threshold: Silero VAD speech probability threshold (0.0-1.0).
+        amplitude_threshold: Fallback amplitude threshold if Silero unavailable.
 
     Usage:
         recorder = SoundDeviceRecorder(sample_rate=16000, max_seconds=30)
@@ -31,72 +66,89 @@ class SoundDeviceRecorder(AudioRecorder):
         sample_rate: int = 16000,
         channels: int = 1,
         max_seconds: float = 30.0,
-        silence_duration: float = 1.5,
-        silence_threshold: float = 0.01,
+        silence_duration: float = 1.2,
+        vad_threshold: float = 0.5,
+        amplitude_threshold: float = 0.01,
     ) -> None:
         self.sample_rate = sample_rate
         self.channels = channels
         self.max_seconds = max_seconds
         self.silence_duration = silence_duration
-        self.silence_threshold = silence_threshold
+        self.vad_threshold = vad_threshold
+        self.amplitude_threshold = amplitude_threshold
+
+        # Load Silero VAD model eagerly so first recording isn't delayed
+        self._vad_model = _load_silero_vad()
+        if self._vad_model:
+            print("[vad] Silero VAD loaded")
+
+    def _is_speech(self, chunk) -> bool:
+        """Run chunk through Silero VAD or fall back to amplitude check."""
+        if self._vad_model is not None:
+            try:
+                import torch
+                tensor = torch.from_numpy(chunk.flatten()).float()
+                # Pad or trim to exact chunk size
+                if len(tensor) < _SILERO_CHUNK_SIZE:
+                    tensor = torch.nn.functional.pad(tensor, (0, _SILERO_CHUNK_SIZE - len(tensor)))
+                else:
+                    tensor = tensor[:_SILERO_CHUNK_SIZE]
+                with torch.no_grad():
+                    prob = self._vad_model(tensor, self.sample_rate).item()
+                return prob >= self.vad_threshold
+            except Exception:
+                pass
+        # Amplitude fallback
+        import numpy as np
+        return float(np.abs(chunk).mean()) > self.amplitude_threshold
 
     def record(self) -> CapturedAudio:
         sd = _lazy_import_sounddevice()
         import numpy as np
 
-        if self.max_seconds > 0:
-            print(f"[rec] Listening... speak now (max {self.max_seconds}s, stops after {self.silence_duration}s of silence)")
-        else:
-            print(f"[rec] Listening... speak now (stops after {self.silence_duration}s of silence)")
-        
+        print(f"[rec] Listening... (max {self.max_seconds}s, stops after {self.silence_duration}s silence)")
+
         recorded_chunks = []
         silence_start = None
         recording_started = False
         start_time = time.time()
-        
+        stop_flag = [False]
+
         def callback(indata, frames, time_info, status):
             nonlocal silence_start, recording_started
             if status:
                 print(f"[rec] Status: {status}")
-            
-            # Calculate audio level
-            audio_level = np.abs(indata).mean()
-            
-            # Detect if speech is present
-            if audio_level > self.silence_threshold:
+
+            is_speech = self._is_speech(indata)
+
+            if is_speech:
                 recording_started = True
                 silence_start = None
                 recorded_chunks.append(indata.copy())
             elif recording_started:
-                # Speech has started, now detecting silence
                 recorded_chunks.append(indata.copy())
                 if silence_start is None:
                     silence_start = time.time()
-        
+                elif time.time() - silence_start > self.silence_duration:
+                    stop_flag[0] = True
+
         try:
             with sd.InputStream(
                 samplerate=self.sample_rate,
                 channels=self.channels,
-                dtype='float32',
+                dtype="float32",
+                blocksize=_SILERO_CHUNK_SIZE,
+                device=sd.default.device[0],
                 callback=callback,
             ):
-                while True:
-                    sd.sleep(100)  # Check every 100ms
-                    
-                    # Stop if max duration reached (if max_seconds > 0)
+                while not stop_flag[0]:
+                    sd.sleep(50)
                     if self.max_seconds > 0 and time.time() - start_time > self.max_seconds:
                         print(f"[rec] Max duration reached ({self.max_seconds}s)")
                         break
-                    
-                    # Stop if silence detected after speech
-                    if recording_started and silence_start is not None:
-                        if time.time() - silence_start > self.silence_duration:
-                            print(f"[rec] Silence detected, stopping")
-                            break
-        
         except KeyboardInterrupt:
             print("\n[rec] Recording interrupted")
-        
+
         if not recorded_chunks:
             print("[rec] No audio recorded")
             return CapturedAudio(
@@ -105,20 +157,10 @@ class SoundDeviceRecorder(AudioRecorder):
                 transcript_hint=None,
                 encoding="pcm_s16le",
             )
-        
-        # Combine all chunks
+
         recording = np.concatenate(recorded_chunks, axis=0)
         duration = len(recording) / self.sample_rate
         print(f"[rec] Recorded {duration:.2f}s of audio")
-        
-        # Play end of listening sound
-        print("[rec] Playing end sound...")
-        try:
-            from .audio_feedback import play_double_beep
-            play_double_beep()
-            print("[rec] End sound played")
-        except Exception as e:
-            print(f"[rec] Failed to play end sound: {e}")
 
         # Convert float32 [-1.0, 1.0] to 16-bit PCM bytes
         pcm = np.clip(recording, -1.0, 1.0)

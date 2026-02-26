@@ -118,5 +118,5 @@ class WyomingTextToSpeech(TextToSpeech):
         if channels > 1:
             pcm = pcm.reshape(-1, channels)
         
-        sd.play(pcm, samplerate=rate)
+        sd.play(pcm, samplerate=rate, device=sd.default.device[1])
         sd.wait()

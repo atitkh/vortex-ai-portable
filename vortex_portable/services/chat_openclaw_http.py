@@ -6,7 +6,7 @@ import json
 import ssl
 import urllib.error
 import urllib.request
-from typing import Optional
+from typing import Iterator, Optional
 
 from ..exceptions import ChatClientError
 from ..models import ChatResponse
@@ -24,6 +24,8 @@ class OpenClawHttpClient:
     conversation_id as the 'user' field in the request, OpenClaw
     derives a stable session key and maintains conversation history.
     
+    Supports both streaming (SSE) and non-streaming responses.
+    
     Usage:
         >>> client = OpenClawHttpClient(
         ...     gateway_url="http://localhost:18789",
@@ -31,6 +33,10 @@ class OpenClawHttpClient:
         ...     agent_id="main"
         ... )
         >>> response = client.chat("Hello", conversation_id="test-1")
+        >>> 
+        >>> # Or stream chunks as they arrive:
+        >>> for chunk in client.chat_stream("Hello", conversation_id="test-1"):
+        ...     print(chunk, end="", flush=True)
     """
 
     def __init__(
@@ -69,6 +75,9 @@ class OpenClawHttpClient:
         """
         Send a message to OpenClaw Gateway.
         
+        Uses streaming internally for better timeout handling,
+        but returns the complete response as a ChatResponse.
+        
         Args:
             message: User message
             conversation_id: Conversation identifier (OpenClaw uses this via 'user' field)
@@ -77,6 +86,60 @@ class OpenClawHttpClient:
             
         Returns:
             ChatResponse with the agent's reply
+        """
+        # Use streaming internally to accumulate the response
+        # This provides better timeout behavior for long responses
+        chunks = []
+        try:
+            for chunk in self.chat_stream(
+                message,
+                conversation_id=conversation_id,
+                system_prompt=system_prompt,
+                debug=debug
+            ):
+                chunks.append(chunk)
+        except ChatClientError:
+            # Re-raise chat client errors
+            raise
+        
+        full_text = "".join(chunks)
+        
+        if not full_text:
+            raise ChatClientError("Empty response from OpenClaw Gateway")
+        
+        return ChatResponse(
+            text=full_text,
+            conversation_id=conversation_id,
+            raw={"streaming": True, "chunks": len(chunks)},
+        )
+
+    def chat_stream(
+        self, 
+        message: str, 
+        *, 
+        conversation_id: str,
+        system_prompt: Optional[str] = None,
+        debug: bool = False
+    ) -> Iterator[str]:
+        """
+        Send a message to OpenClaw Gateway and stream the response.
+        
+        Yields text chunks as they arrive via Server-Sent Events (SSE).
+        This allows for lower latency - you can start processing/speaking
+        the response before it's fully generated.
+        
+        Args:
+            message: User message
+            conversation_id: Conversation identifier (OpenClaw uses this via 'user' field)
+            system_prompt: Optional system prompt override
+            debug: Enable debug mode
+            
+        Yields:
+            Text chunks as they arrive from the agent
+            
+        Example:
+            >>> for chunk in client.chat_stream("Hello", conversation_id="test"):
+            ...     print(chunk, end="", flush=True)
         """
         messages = []
         
@@ -91,18 +154,17 @@ class OpenClawHttpClient:
             "content": message
         })
         
-        # OpenClaw uses the 'user' field to derive a stable session key
-        # This enables conversation continuity across multiple requests
         payload = {
             "model": self._model,
             "messages": messages,
             "user": conversation_id,
-            "stream": False,
+            "stream": True,  # Enable SSE streaming
         }
         
         headers = {
             "Authorization": f"Bearer {self._token}",
             "Content-Type": "application/json",
+            "Accept": "text/event-stream",
         }
         
         try:
@@ -118,23 +180,36 @@ class OpenClawHttpClient:
                 timeout=self._timeout,
                 context=self._ssl_context,
             ) as response:
-                data = json.loads(response.read().decode("utf-8"))
-                
-            # Parse OpenAI-compatible response
-            if "choices" not in data or not data["choices"]:
-                raise ChatClientError("Invalid response from OpenClaw Gateway")
-            
-            choice = data["choices"][0]
-            content = choice.get("message", {}).get("content", "")
-            
-            if not content:
-                raise ChatClientError("Empty response from OpenClaw Gateway")
-            
-            return ChatResponse(
-                text=content,
-                conversation_id=conversation_id,
-                raw=data,
-            )
+                # Read SSE stream line by line
+                for line_bytes in response:
+                    line = line_bytes.decode("utf-8").strip()
+                    
+                    # Skip empty lines
+                    if not line:
+                        continue
+                    
+                    # Check for end marker
+                    if line == "data: [DONE]":
+                        break
+                    
+                    # Parse SSE data line
+                    if line.startswith("data: "):
+                        data_str = line[6:]  # Remove "data: " prefix
+                        try:
+                            data = json.loads(data_str)
+                            
+                            # Extract content delta from OpenAI format
+                            if "choices" in data and data["choices"]:
+                                choice = data["choices"][0]
+                                delta = choice.get("delta", {})
+                                content = delta.get("content", "")
+                                
+                                if content:
+                                    yield content
+                                    
+                        except json.JSONDecodeError:
+                            # Skip malformed JSON chunks
+                            continue
             
         except urllib.error.HTTPError as e:
             error_body = e.read().decode("utf-8", errors="replace")
@@ -144,8 +219,4 @@ class OpenClawHttpClient:
         except urllib.error.URLError as e:
             raise ChatClientError(
                 f"Failed to connect to OpenClaw Gateway: {e.reason}"
-            ) from e
-        except json.JSONDecodeError as e:
-            raise ChatClientError(
-                f"Invalid JSON response from OpenClaw Gateway"
             ) from e

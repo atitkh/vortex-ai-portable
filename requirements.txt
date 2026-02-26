@@ -8,6 +8,10 @@ numpy
 openwakeword
 onnxruntime  # Required backend for openwakeword
 
+# VAD: Silero VAD for accurate speech detection
+torch
+silero-vad
+
 # Wyoming protocol (for rhasspy/wyoming-whisper and wyoming-piper services)
 wyoming
 

@@ -62,7 +62,7 @@ def build_assistant(config: AppConfig) -> PortableAssistant:
             sample_rate=16000,
             max_seconds=config.record_seconds,
             silence_duration=config.silence_duration,
-            silence_threshold=0.01,
+            amplitude_threshold=0.01,
         )
         
         # Choose STT implementation based on config
@@ -113,6 +113,8 @@ def build_assistant(config: AppConfig) -> PortableAssistant:
         language=config.language,
         conversation_id=config.conversation_id or None,
         debug=config.debug,
+        follow_up_timeout=config.follow_up_timeout,
+        allow_interruption=config.allow_interruption,
     )
 
 

@@ -93,5 +93,5 @@ class RemoteTextToSpeech(TextToSpeech):
 
         # Convert to numpy array and play
         pcm = np.frombuffer(pcm_data, dtype=np.int16).astype(np.float32) / 32768.0
-        sd.play(pcm, samplerate=self._sample_rate)
+        sd.play(pcm, samplerate=self._sample_rate, device=sd.default.device[1])
         sd.wait()

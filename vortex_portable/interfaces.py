@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Optional, Protocol
+from typing import Iterator, Optional, Protocol, runtime_checkable
 
 from .models import CapturedAudio, ChatResponse
 
@@ -38,6 +38,34 @@ class ChatClient(Protocol):
 
     def chat(self, message: str, *, conversation_id: str, debug: bool = False) -> ChatResponse:
         """Send a single message into a conversation and return the assistant reply."""
+
+
+@runtime_checkable
+class StreamingChatClient(Protocol):
+    """
+    Chat client that supports streaming responses.
+    
+    Streaming allows the assistant to start speaking before the full response
+    is generated, significantly reducing perceived latency.
+    """
+
+    def chat(self, message: str, *, conversation_id: str, debug: bool = False) -> ChatResponse:
+        """Send a single message into a conversation and return the assistant reply."""
+
+    def chat_stream(
+        self, 
+        message: str, 
+        *, 
+        conversation_id: str,
+        system_prompt: Optional[str] = None,
+        debug: bool = False
+    ) -> Iterator[str]:
+        """
+        Send a message and stream response chunks as they arrive.
+        
+        Yields:
+            Text chunks as they become available
+        """
 
 
 class TextToSpeech(Protocol):

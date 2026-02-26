@@ -80,6 +80,8 @@ class AppConfig:
     whisper_device: Optional[str]
     record_seconds: float
     silence_duration: float
+    follow_up_timeout: float
+    allow_interruption: bool
     piper_model_path: Optional[str]
     piper_binary: str
     piper_speaker: Optional[str]
@@ -116,6 +118,8 @@ class AppConfig:
             - VORTEX_WHISPER_DEVICE: Whisper device (e.g., "cuda" or "cpu").
             - VORTEX_RECORD_SECONDS: Seconds per utterance recording in audio mode (default: 5).
             - VORTEX_SILENCE_DURATION: Seconds of silence before stopping recording (default: 1.5).
+            - VORTEX_FOLLOW_UP_TIMEOUT: Seconds to wait for follow-up after response (default: 12).
+            - VORTEX_ALLOW_INTERRUPTION: Allow user to interrupt TTS (default: true).
             - VORTEX_PIPER_MODEL: Path to Piper .onnx model (required for audio mode).
             - VORTEX_PIPER_BINARY: Piper binary name/path (default: "piper").
             - VORTEX_PIPER_SPEAKER: Optional speaker id/name passed to Piper.
@@ -173,6 +177,14 @@ class AppConfig:
             silence_duration = float(silence_duration_raw)
         except ValueError as exc:  # pragma: no cover - defensive guard
             raise ValueError("VORTEX_SILENCE_DURATION must be a number") from exc
+
+        follow_up_timeout_raw = os.environ.get("VORTEX_FOLLOW_UP_TIMEOUT", "12")
+        try:
+            follow_up_timeout = float(follow_up_timeout_raw)
+        except ValueError as exc:
+            raise ValueError("VORTEX_FOLLOW_UP_TIMEOUT must be a number") from exc
+        allow_interruption_raw = os.environ.get("VORTEX_ALLOW_INTERRUPTION", "true").lower()
+        allow_interruption = allow_interruption_raw in {"1", "true", "yes", "on"}
         
         piper_model_path = os.environ.get("VORTEX_PIPER_MODEL") or None
         piper_binary = os.environ.get("VORTEX_PIPER_BINARY", "piper")
@@ -205,6 +217,8 @@ class AppConfig:
             whisper_device=whisper_device,
             record_seconds=record_seconds,
             silence_duration=silence_duration,
+            follow_up_timeout=follow_up_timeout,
+            allow_interruption=allow_interruption,
             piper_model_path=piper_model_path,
             piper_binary=piper_binary,
             piper_speaker=piper_speaker,

@@ -76,7 +76,7 @@ class PiperTextToSpeech(TextToSpeech):
             raise RuntimeError("Piper produced no audio output.")
 
         pcm = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
-        sd.play(pcm, samplerate=self.sample_rate)
+        sd.play(pcm, samplerate=self.sample_rate, device=sd.default.device[1])
         sd.wait()
 
 
